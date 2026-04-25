@@ -63,3 +63,15 @@ python3 -m py_compile scripts/build_pokemon_dataset.py && echo "[OK] py_compile"
 ```bash
 ./scripts/run_checks.sh
 ```
+
+
+## データセットが作成されない主な原因と今回の修正
+- 原因1: 実行環境の外部HTTPS制限（`403 Forbidden`）で、Smogon/PokeAPIの取得に失敗すると処理が停止する。  
+  - 修正: 取得失敗時のエラーメッセージを明確化し、原因URLとHTTP/Networkエラーが分かるようにしました。
+- 原因2: 出力先ディレクトリ `data/` が存在しない環境では、書き込み時に失敗しうる。  
+  - 修正: スクリプト側で出力ディレクトリを自動作成するようにしました（`--output-dir`対応）。
+
+### 修正後の実行例
+```bash
+python3 scripts/build_pokemon_dataset.py --output-dir data --top-n 120
+```

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
+import argparse
 import csv
 import gzip
-import io
 import json
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 import urllib.request
@@ -32,8 +33,13 @@ class UsageEntry:
 
 def http_get(url: str) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=30) as res:
-        return res.read()
+    try:
+        with urllib.request.urlopen(req, timeout=30) as res:
+            return res.read()
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"HTTP error while fetching {url}: {e.code} {e.reason}") from e
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Network error while fetching {url}: {e.reason}") from e
 
 
 def fetch_text(url: str) -> str:
@@ -164,8 +170,8 @@ def get_pokemon_data(name: str) -> dict:
     url = POKEAPI_POKEMON.format(name=api_name)
     try:
         body = http_get(url)
-    except urllib.error.HTTPError as e:
-        if e.code == 404 and api_name.endswith("-totem"):
+    except RuntimeError as e:
+        if " 404 " in str(e) and api_name.endswith("-totem"):
             api_name = api_name.replace("-totem", "")
             body = http_get(POKEAPI_POKEMON.format(name=api_name))
         else:
@@ -201,11 +207,29 @@ def extract_formulas(effect_text: str) -> List[str]:
     return sorted(set(found))
 
 
-def main() -> None:
-    usage_text = fetch_text(USAGE_URL)
-    moveset_text = fetch_text(MOVESET_URL)
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Build top-N competitive Pokémon dataset")
+    parser.add_argument("--output-dir", default="data", help="Directory for generated JSON/CSV")
+    parser.add_argument("--top-n", type=int, default=TOP_N, help="How many Pokémon to keep from usage table")
+    return parser.parse_args()
 
-    usage_entries = parse_usage(usage_text, TOP_N)
+
+def main() -> None:
+    args = parse_args()
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        usage_text = fetch_text(USAGE_URL)
+        moveset_text = fetch_text(MOVESET_URL)
+    except RuntimeError as e:
+        raise SystemExit(
+            "Failed to download source data. "
+            "If you are in a restricted network, run this script where outbound HTTPS is allowed.\n"
+            f"Detail: {e}"
+        )
+
+    usage_entries = parse_usage(usage_text, args.top_n)
     movesets = parse_moveset_sections(moveset_text)
 
     ability_cache: Dict[str, dict] = {}
@@ -253,10 +277,13 @@ def main() -> None:
             }
         )
 
-    with open("data/top120_pokemon_dataset_2026-03_gen9ou.json", "w", encoding="utf-8") as f:
+    json_path = output_dir / "top120_pokemon_dataset_2026-03_gen9ou.json"
+    csv_path = output_dir / "top120_pokemon_dataset_2026-03_gen9ou.csv"
+
+    with json_path.open("w", encoding="utf-8") as f:
         json.dump(rows, f, ensure_ascii=False, indent=2)
 
-    with open("data/top120_pokemon_dataset_2026-03_gen9ou.csv", "w", encoding="utf-8", newline="") as f:
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(
             [
@@ -294,6 +321,8 @@ def main() -> None:
             )
 
     print(f"Built dataset with {len(rows)} Pokémon")
+    print(f"JSON: {json_path}")
+    print(f"CSV : {csv_path}")
 
 
 if __name__ == "__main__":
