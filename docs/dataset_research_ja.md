@@ -49,3 +49,17 @@
 ```bash
 python3 scripts/build_pokemon_dataset.py
 ```
+
+
+## 補足: `python3 -m py_compile ...` で何も表示されない理由
+- `py_compile` は**成功時に標準出力へ何も出さない**のが通常動作です。
+- 失敗時だけエラー（SyntaxErrorなど）を表示します。
+- 成功を明示したい場合は次のいずれかを使ってください。
+
+```bash
+python3 -m py_compile scripts/build_pokemon_dataset.py && echo "[OK] py_compile"
+```
+
+```bash
+./scripts/run_checks.sh
+```
